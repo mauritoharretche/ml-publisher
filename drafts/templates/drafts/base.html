@@ -1,0 +1,4 @@
+{% load static %}
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% block title %}ML Publisher{% endblock %}</title><link rel="stylesheet" href="{% static 'drafts/app.css' %}"><script src="https://unpkg.com/htmx.org@2.0.4" defer></script></head>
+<body><header><a href="{% url 'drafts:list' %}" class="brand">ML Publisher</a><nav><a class="nav-link" href="{% url 'drafts:connection' %}">Mercado Libre</a><a class="nav-link" href="{% url 'drafts:diagnostic' %}">Diagnóstico</a><a class="button" href="{% url 'drafts:create' %}">Nuevo borrador</a></nav></header><main>{% if messages %}{% for message in messages %}<p class="message">{{ message }}</p>{% endfor %}{% endif %}{% block content %}{% endblock %}</main></body></html>
