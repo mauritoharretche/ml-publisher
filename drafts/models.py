@@ -63,7 +63,7 @@ class MercadoLibreConnection(models.Model):
     access_token_encrypted = models.TextField()
     refresh_token_encrypted = models.TextField()
     token_expires_at = models.DateTimeField()
-    scopes = models.CharField(max_length=255, blank=True)
+    scopes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -73,6 +73,20 @@ class MercadoLibreConnection(models.Model):
 
     def __str__(self):
         return f"Seller {self.seller_id}"
+
+
+class MercadoLibreOAuthTransaction(models.Model):
+    """Estado OAuth de un solo uso; nunca almacena el state ni PKCE en claro."""
+    state_hash = models.CharField(max_length=64, unique=True)
+    code_verifier_encrypted = models.TextField()
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "transacción OAuth de Mercado Libre"
+        verbose_name_plural = "transacciones OAuth de Mercado Libre"
 
 
 class PublicationAttempt(models.Model):

@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from django.conf import settings
 from django.utils import timezone
@@ -89,8 +89,33 @@ class MercadoLibreOAuthService:
         self.http = http_client or MercadoLibreHttpClient()
 
     def _configuration(self):
-        if not all([settings.MERCADO_LIBRE_CLIENT_ID, settings.MERCADO_LIBRE_CLIENT_SECRET, settings.MERCADO_LIBRE_REDIRECT_URI]):
+        if self.missing_oauth_configuration():
             raise MercadoLibreConfigurationError("Falta configurar Client ID, Client Secret o URL de callback.")
+
+    @staticmethod
+    def missing_oauth_configuration():
+        required = {
+            "Client ID": settings.MERCADO_LIBRE_CLIENT_ID,
+            "Client Secret": settings.MERCADO_LIBRE_CLIENT_SECRET,
+            "URL de callback": settings.MERCADO_LIBRE_REDIRECT_URI,
+        }
+        missing = [label for label, value in required.items() if not value]
+        callback = settings.MERCADO_LIBRE_REDIRECT_URI
+        parsed = urlparse(callback) if callback else None
+        if callback and (parsed.scheme != "https" or not parsed.netloc):
+            missing.append("URL de callback HTTPS válida")
+        return missing
+
+    @staticmethod
+    def missing_connection_configuration():
+        """Variables necesarias antes de iniciar un flujo que guardará tokens."""
+        missing = MercadoLibreOAuthService.missing_oauth_configuration()
+        if not settings.MERCADO_LIBRE_ENCRYPTION_KEY:
+            missing.append("clave de cifrado")
+        return missing
+
+    def connection_is_configured(self):
+        return not self.missing_connection_configuration()
 
     def authorization_url(self, state, code_challenge):
         self._configuration()

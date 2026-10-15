@@ -65,6 +65,14 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 CSRF_COOKIE_HTTPONLY = True
 SESSION_COOKIE_HTTPONLY = True
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {"redact_oauth_callback": {"()": "config.logging.OAuthCallbackRedactionFilter"}},
+    "formatters": {"django.server": {"()": "django.utils.log.ServerFormatter", "format": "[{server_time}] {message}", "style": "{"}},
+    "handlers": {"django.server": {"class": "logging.StreamHandler", "formatter": "django.server", "filters": ["redact_oauth_callback"]}},
+    "loggers": {"django.server": {"handlers": ["django.server"], "level": "INFO", "propagate": False}},
+}
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

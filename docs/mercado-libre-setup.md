@@ -10,6 +10,8 @@ ML Publisher no registra aplicaciones, crea usuarios de prueba ni inicia OAuth a
 4. Usá HTTPS para la URI registrada. Para desarrollo local, exponé temporalmente el callback mediante un túnel HTTPS o usá un entorno de desarrollo HTTPS controlado; no registres un callback con parámetros variables.
 5. Habilitá PKCE en la aplicación si está disponible. ML Publisher usa `state` y PKCE.
 
+Si ya existe un volumen local de PostgreSQL, conservá las variables `POSTGRES_*` con las que se inicializó. Cambiarlas después puede impedir la conexión; no recrees ni elimines el volumen salvo que hayas decidido descartar explícitamente esos datos de desarrollo.
+
 ## 2. Configurar el entorno local
 
 Copiá el ejemplo sin versionarlo:
@@ -19,6 +21,8 @@ cp .env.example .env
 ```
 
 Completá estas variables sólo en `.env` o en el administrador de secretos del entorno:
+
+Mientras `MERCADO_LIBRE_CLIENT_ID`, `MERCADO_LIBRE_CLIENT_SECRET`, `MERCADO_LIBRE_REDIRECT_URI` o `MERCADO_LIBRE_ENCRYPTION_KEY` estén vacíos, ML Publisher mantiene deshabilitado el inicio de OAuth. No existe un callback HTTP alternativo.
 
 | Variable | Propósito |
 | --- | --- |

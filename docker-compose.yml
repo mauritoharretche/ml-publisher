@@ -25,13 +25,15 @@ services:
       MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-5242880}
       MERCADO_LIBRE_CLIENT_ID: ${MERCADO_LIBRE_CLIENT_ID:-}
       MERCADO_LIBRE_CLIENT_SECRET: ${MERCADO_LIBRE_CLIENT_SECRET:-}
-      MERCADO_LIBRE_REDIRECT_URI: ${MERCADO_LIBRE_REDIRECT_URI:-http://localhost:8000/mercadolibre/callback/}
+      # Sin una URI HTTPS registrada no se puede iniciar OAuth. No usar un
+      # callback local de respaldo: Mercado Libre exige coincidencia exacta.
+      MERCADO_LIBRE_REDIRECT_URI: ${MERCADO_LIBRE_REDIRECT_URI:-}
       MERCADO_LIBRE_ENCRYPTION_KEY: ${MERCADO_LIBRE_ENCRYPTION_KEY:-}
       MERCADO_LIBRE_TIMEOUT: ${MERCADO_LIBRE_TIMEOUT:-10}
       MERCADO_LIBRE_ENABLE_TEST_WRITES: ${MERCADO_LIBRE_ENABLE_TEST_WRITES:-false}
       MERCADO_LIBRE_TEST_SELLER_ID: ${MERCADO_LIBRE_TEST_SELLER_ID:-}
     volumes: [.:/app]
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     depends_on:
       db:
         condition: service_healthy

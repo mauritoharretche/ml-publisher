@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import secrets
-import time
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Max
@@ -15,6 +14,7 @@ from .models import ProductDraft, ProductImage
 from .services.connections import access_token, active_connection, save_tokens
 from .services.exceptions import MercadoLibreAuthorizationError, MercadoLibreError
 from .services.mercado_libre_client import MercadoLibreMetadataService, MercadoLibreOAuthService
+from .services.oauth_transactions import consume_transaction, create_transaction
 from .services.preflight import IntegrationDiagnosticService, PublicationPreflightService
 from .services.publishing import LiveMercadoLibrePublicationClient, PublicationBlocked, PublicationOptions, PublicationService
 
@@ -144,7 +144,13 @@ class ConnectionStatusView(TemplateView):
     template_name = "drafts/connection_status.html"
 
     def get_context_data(self, **kwargs):
-        return {**super().get_context_data(**kwargs), "connection": active_connection()}
+        oauth = MercadoLibreOAuthService()
+        return {
+            **super().get_context_data(**kwargs),
+            "connection": active_connection(),
+            "oauth_configured": oauth.connection_is_configured(),
+            "oauth_missing_configuration": oauth.missing_connection_configuration(),
+        }
 
 
 class IntegrationDiagnosticView(TemplateView):
@@ -159,26 +165,28 @@ class IntegrationDiagnosticView(TemplateView):
 
 
 def start_connection(request):
+    oauth = MercadoLibreOAuthService()
+    if not oauth.connection_is_configured():
+        messages.error(request, "OAuth no está configurado. Completá: " + ", ".join(oauth.missing_connection_configuration()) + ".")
+        return redirect("drafts:connection")
     state = secrets.token_urlsafe(32)
     verifier, challenge = _pkce_pair()
-    request.session["ml_oauth_state"] = state
-    request.session["ml_oauth_verifier"] = verifier
-    request.session["ml_oauth_started_at"] = time.time()
     try:
-        return redirect(MercadoLibreOAuthService().authorization_url(state, challenge))
+        authorization_url = oauth.authorization_url(state, challenge)
+        create_transaction(state, verifier)
+        return redirect(authorization_url)
     except MercadoLibreError as error:
         messages.error(request, str(error))
         return redirect("drafts:connection")
 
 
 def oauth_callback(request):
-    expected_state = request.session.pop("ml_oauth_state", None)
-    verifier = request.session.pop("ml_oauth_verifier", None)
-    started_at = request.session.pop("ml_oauth_started_at", 0)
     received_state = request.GET.get("state", "")
     code = request.GET.get("code")
     error = request.GET.get("error")
-    if not expected_state or not verifier or not secrets.compare_digest(expected_state, received_state) or time.time() - started_at > 600:
+    try:
+        verifier = consume_transaction(received_state)
+    except MercadoLibreError:
         return HttpResponseBadRequest("La respuesta de autorización no es válida o expiró.")
     if error or not code:
         messages.error(request, "Mercado Libre no autorizó la conexión. Podés intentarlo nuevamente.")

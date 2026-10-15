@@ -30,6 +30,11 @@ class DraftViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sugerir categorías")
 
+    def test_diagnostic_without_connection_makes_no_external_request(self):
+        response = self.client.get(reverse("drafts:diagnostic"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No hay cuenta conectada.")
+
     def test_create_requires_csrf_token(self):
         client = self.client_class(enforce_csrf_checks=True)
         response = client.post(reverse("drafts:create"), {"title": "Producto válido", "price": "12", "stock": 0, "condition": "new", "status": "draft"})
