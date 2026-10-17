@@ -10,7 +10,7 @@ from drafts.models import ProductDraft
 class DraftViewTests(TestCase):
     def make_image(self):
         stream = BytesIO()
-        Image.new("RGB", (10, 10)).save(stream, "JPEG")
+        Image.new("RGB", (500, 500)).save(stream, "JPEG")
         return SimpleUploadedFile("product.jpg", stream.getvalue(), content_type="image/jpeg")
 
     def test_create_draft_with_multiple_images(self):
@@ -29,6 +29,25 @@ class DraftViewTests(TestCase):
         response = self.client.get(reverse("drafts:create"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sugerir categorías")
+
+    def test_list_filters_by_search_and_status(self):
+        matching = ProductDraft.objects.create(title="Amplificador valvular", price="1200", status=ProductDraft.Status.READY)
+        ProductDraft.objects.create(title="Cable de audio", price="50", status=ProductDraft.Status.DRAFT)
+
+        response = self.client.get(reverse("drafts:list"), {"q": "amplificador", "status": ProductDraft.Status.READY})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, matching.title)
+        self.assertNotContains(response, "Cable de audio")
+        self.assertContains(response, "Todos los estados")
+
+    def test_catalog_formats_ars_price_once(self):
+        ProductDraft.objects.create(title="Precio formateado", price="100000", status=ProductDraft.Status.DRAFT)
+
+        response = self.client.get(reverse("drafts:list"))
+
+        self.assertContains(response, "$ 100.000,00")
+        self.assertNotContains(response, "AR$ 100000,00ARS")
 
     def test_diagnostic_without_connection_makes_no_external_request(self):
         response = self.client.get(reverse("drafts:diagnostic"))
