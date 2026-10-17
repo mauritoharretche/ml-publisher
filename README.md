@@ -33,12 +33,14 @@ DJANGO_DB_ENGINE=django.db.backends.sqlite3 POSTGRES_DB=:memory: python manage.p
 ## Seguridad y límites actuales
 
 - Formularios POST protegidos con CSRF; cookies HTTP-only, `X-Frame-Options: DENY` y `nosniff`.
-- Las imágenes se verifican con Pillow y se admiten JPG, PNG y WebP hasta 5 MB por defecto (`MAX_UPLOAD_SIZE`).
+- Las imágenes se verifican con Pillow: sólo JPG/JPEG y PNG reales, entre 500 × 500 y 1920 × 1920 px, hasta 10 MB por defecto (`MAX_UPLOAD_SIZE`). No se convierten ni se transfieren durante el preflight.
 - `.env`, archivos de medios y artefactos locales están excluidos de Git.
 - OAuth usa `state` de un solo uso, PKCE y un callback con vencimiento. Los access y refresh tokens se cifran con Fernet usando `MERCADO_LIBRE_ENCRYPTION_KEY`, que nunca debe guardarse en el repositorio.
 - La renovación reemplaza el refresh token almacenado. Si falla, se informa que debe reconectarse la cuenta.
-- Sólo se consulta el perfil mínimo del seller, el predictor de categorías y los atributos de categoría. Los atributos condicionales se muestran a partir de sus metadatos, pero no se evalúan con un supuesto flujo de publicación.
-- No hay endpoints de creación, modificación o publicación de productos.
+- El preflight comercial sólo consulta perfil, predictor, categoría, atributos y tipos de publicación disponibles. Nunca renueva tokens: informa el bloqueo si la autorización no alcanza.
+- Para sellers con `user_product_seller`, el borrador separa `family_name`, `domain_id`, atributos de familia/producto y condición de venta. El título local es sólo referencia y no figura como `title` en la vista previa de User Products.
+- Los atributos condicionales, canales, envío, transferencia de imágenes y el contrato final de creación quedan explícitamente pendientes cuando no existe un recurso GET que los confirme.
+- No se habilitó ningún endpoint de escritura comercial. El único cliente de escritura existente continúa protegido para ensayos con usuario de test y permanece deshabilitado por defecto.
 
 ## Registrar la aplicación en Mercado Libre
 
@@ -51,7 +53,7 @@ La guía completa, incluyendo HTTPS, callback exacto, PKCE, variables y usuario 
 3. Abrí un borrador y elegí **Validar publicación**. Revisá bloqueos, advertencias, pendientes y la vista previa conceptual.
 4. Si el token requiere renovación, el diagnóstico lo informará sin hacer POST; reconectá la cuenta mediante el flujo OAuth existente antes de repetirlo.
 
-El diagnóstico detecta el tag `user_product_seller` desde el perfil, pero la ausencia del tag se informa como flujo indeterminado y no habilita automáticamente un flujo clásico.
+El diagnóstico detecta el tag `user_product_seller` desde el perfil, pero la ausencia del tag se informa como flujo indeterminado y no habilita automáticamente un flujo clásico. Para un seller comercial con ese tag, **Validar producto** consulta tipos disponibles para la categoría elegida y genera una vista de las entidades User Product y condición de venta, sin enviar payloads.
 
 ## Ensayo de escritura con usuario test
 

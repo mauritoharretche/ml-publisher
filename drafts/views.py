@@ -2,14 +2,15 @@ import base64
 import hashlib
 import secrets
 from django.contrib import messages
+from django.conf import settings
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Count, Max, Prefetch, Q
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import CreateView, DetailView, ListView, TemplateView, UpdateView
-from .forms import ImageUploadForm, ProductDraftForm, TestPublicationForm
+from .forms import CommercialPublicationConfirmationForm, ImageUploadForm, ProductDraftForm, TestPublicationForm
 from .models import ProductDraft, ProductImage
 from .services.connections import access_token, active_connection, save_tokens
 from .services.exceptions import MercadoLibreAuthorizationError, MercadoLibreError
@@ -17,32 +18,58 @@ from .services.mercado_libre_client import MercadoLibreMetadataService, MercadoL
 from .services.oauth_transactions import consume_transaction, create_transaction
 from .services.preflight import IntegrationDiagnosticService, PublicationPreflightService
 from .services.publishing import LiveMercadoLibrePublicationClient, PublicationBlocked, PublicationOptions, PublicationService
+from .services.commercial_publishing import CommercialPublicationService, LiveCommercialPublicationClient, draft_fingerprint
+from .services.enrichment import EnrichmentError, OpenAIVisionProvider, ProductEnrichmentService
+from .models import ProductEnrichment
 
 
 class ImageHandlingMixin:
     metadata_error = None
 
-    def get_attribute_definitions(self):
+    def get_category_metadata(self):
         category_id = self.request.POST.get("category_id") if self.request.method == "POST" else getattr(self.get_object(), "category_id", "") if hasattr(self, "get_object") and self.kwargs.get("pk") else ""
         if not category_id:
-            return []
+            return [], [], [], [], []
         try:
-            return MercadoLibreMetadataService().category_attributes(category_id, access_token(allow_refresh=False))
+            connection = active_connection()
+            if not connection:
+                return [], [], [], [], []
+            token = access_token(connection, allow_refresh=False)
+            metadata = MercadoLibreMetadataService()
+            definitions = metadata.category_attributes(category_id, token)
+            listing_types = (metadata.available_listing_types(connection.seller_id, category_id, token).get("available") or [])
+            sale_terms = metadata.category_sale_terms(category_id, token)
+            seller_shipping = metadata.seller_shipping_preferences(connection.seller_id, token)
+            category_shipping = metadata.category_shipping_preferences(category_id, token)
+            seller_modes = set(seller_shipping.get("modes") or []) if isinstance(seller_shipping, dict) else set()
+            category_modes = {entry.get("mode") for entry in (category_shipping.get("logistics") or []) if entry.get("mode")} if isinstance(category_shipping, dict) else set()
+            draft = self.get_object() if hasattr(self, "get_object") and self.kwargs.get("pk") else None
+            price = draft.price if draft else self.request.POST.get("price", "")
+            currency = draft.currency if draft else "ARS"
+            estimates = metadata.listing_prices(site_id=settings.MERCADO_LIBRE_SITE_ID, price=price, currency_id=currency, category_id=category_id, access_token=token) if price else []
+            available_ids = {entry.get("id") for entry in listing_types}
+            estimates = [entry for entry in estimates if entry.get("listing_type_id") in available_ids] if isinstance(estimates, list) else []
+            return definitions, listing_types, sale_terms if isinstance(sale_terms, list) else [], sorted(seller_modes & category_modes), estimates
         except MercadoLibreError as error:
             # Sin conexión se conservan los borradores preexistentes y sus campos libres.
             if active_connection():
                 self.metadata_error = str(error)
-            return []
+            return [], [], [], [], []
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["attribute_definitions"] = self.get_attribute_definitions()
+        definitions, listing_types, sale_terms, shipping_options, cost_estimates = self.get_category_metadata()
+        kwargs.update(attribute_definitions=definitions, listing_types=listing_types, sale_term_definitions=sale_terms, shipping_options=shipping_options, cost_estimates=cost_estimates)
         return kwargs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.setdefault("image_form", ImageUploadForm())
         context.setdefault("metadata_error", self.metadata_error)
+        context.setdefault("upload_max_mb", min(settings.MAX_UPLOAD_SIZE, 10 * 1024 * 1024) // (1024 * 1024))
+        context.setdefault("cost_estimates", getattr(context.get("form"), "cost_estimates", []))
+        context.setdefault("sale_term_definitions", getattr(context.get("form"), "sale_term_definitions", []))
+        context.setdefault("shipping_options", getattr(context.get("form"), "shipping_options", []))
         return context
 
     def form_valid(self, form):
@@ -77,6 +104,31 @@ class DraftListView(ListView):
     template_name = "drafts/draft_list.html"
     context_object_name = "drafts"
 
+    def get_queryset(self):
+        queryset = ProductDraft.objects.prefetch_related(
+            Prefetch("images", queryset=ProductImage.objects.order_by("position", "id"), to_attr="prefetched_images")
+        ).annotate(image_count=Count("images"))
+        self.query = self.request.GET.get("q", "").strip()
+        self.status_filter = self.request.GET.get("status", "").strip()
+        if self.query:
+            queryset = queryset.filter(Q(title__icontains=self.query) | Q(category_id__icontains=self.query))
+        if self.status_filter in ProductDraft.Status.values:
+            queryset = queryset.filter(status=self.status_filter)
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        all_drafts = ProductDraft.objects.all()
+        context.update({
+            "draft_count": all_drafts.count(),
+            "needs_attention_count": all_drafts.filter(Q(status=ProductDraft.Status.VALIDATION_ERROR) | Q(category_id="") | Q(listing_type_id="")).count(),
+            "recent_drafts": all_drafts.order_by("-updated_at")[:4],
+            "query": self.query,
+            "status_filter": self.status_filter,
+            "status_choices": ProductDraft.Status.choices,
+        })
+        return context
+
 
 class DraftCreateView(ImageHandlingMixin, CreateView):
     model = ProductDraft
@@ -101,6 +153,47 @@ class DraftDetailView(DetailView):
     template_name = "drafts/draft_detail.html"
 
 
+class EnrichmentView(DetailView):
+    model = ProductDraft
+    template_name = "drafts/enrichment.html"
+
+    def get_context_data(self, **kwargs):
+        return {**super().get_context_data(**kwargs), "enrichment": self.object.enrichments.first(), "ai_configured": OpenAIVisionProvider().configured(), "max_images": settings.OPENAI_MAX_ENRICHMENT_IMAGES}
+
+
+@require_POST
+def run_enrichment(request, pk):
+    draft = ProductDraft.objects.get(pk=pk)
+    if request.POST.get("consent") != "yes":
+        messages.error(request, "Debés confirmar que las imágenes seleccionadas se enviarán al proveedor de IA configurado.")
+        return redirect("drafts:enrichment", pk=pk)
+    try:
+        if not OpenAIVisionProvider().configured():
+            raise EnrichmentError("La IA no está configurada. Definí OPENAI_API_KEY y OPENAI_MODEL en el entorno local.")
+        connection = active_connection()
+        if not connection:
+            raise EnrichmentError("No hay conexión de Mercado Libre para validar atributos de categoría.")
+        token = access_token(connection, allow_refresh=False)
+        definitions = MercadoLibreMetadataService().category_attributes(draft.category_id, token)
+        ProductEnrichmentService().run(draft, attribute_definitions=definitions)
+        messages.success(request, "Análisis completado. Revisá cada sugerencia antes de aplicarla.")
+    except (EnrichmentError, MercadoLibreError) as error:
+        messages.error(request, str(error))
+    return redirect("drafts:enrichment", pk=pk)
+
+
+@require_POST
+def apply_enrichment(request, pk, enrichment_pk):
+    draft = ProductDraft.objects.get(pk=pk)
+    enrichment = ProductEnrichment.objects.get(pk=enrichment_pk, draft=draft)
+    try:
+        _, applied = ProductEnrichmentService().apply(enrichment, request.POST.getlist("suggestion"))
+        messages.success(request, f"Se aplicaron {len(applied)} sugerencia(s) sin sobrescribir datos existentes.")
+    except EnrichmentError as error:
+        messages.error(request, str(error))
+    return redirect("drafts:enrichment", pk=pk)
+
+
 class DraftPreflightView(DetailView):
     model = ProductDraft
     template_name = "drafts/preflight.html"
@@ -109,6 +202,31 @@ class DraftPreflightView(DetailView):
         context = super().get_context_data(**kwargs)
         context["report"] = PublicationPreflightService().run(self.object)
         return context
+
+
+class CommercialPublicationConfirmView(DetailView):
+    model = ProductDraft
+    template_name = "drafts/commercial_publication_confirm.html"
+
+    def get_context_data(self, **kwargs):
+        report = PublicationPreflightService().run(self.object)
+        return {**super().get_context_data(**kwargs), "report": report, "form": CommercialPublicationConfirmationForm(initial={"draft_fingerprint": draft_fingerprint(self.object)}), "production_writes_enabled": settings.MERCADO_LIBRE_ENABLE_PRODUCTION_WRITES}
+
+
+@require_POST
+def publish_commercial_draft(request, pk):
+    draft = ProductDraft.objects.get(pk=pk)
+    form = CommercialPublicationConfirmationForm(request.POST)
+    if not form.is_valid():
+        report = PublicationPreflightService().run(draft)
+        return render(request, "drafts/commercial_publication_confirm.html", {"object": draft, "report": report, "form": form, "production_writes_enabled": settings.MERCADO_LIBRE_ENABLE_PRODUCTION_WRITES}, status=400)
+    try:
+        attempt = CommercialPublicationService(LiveCommercialPublicationClient()).publish_initial(draft, confirmation_fingerprint=form.cleaned_data["draft_fingerprint"])
+    except PublicationBlocked as error:
+        messages.error(request, str(error))
+        return redirect("drafts:commercial_publish_confirm", pk=draft.pk)
+    messages.success(request, f"Publicación comercial creada: {attempt.item_id}.")
+    return redirect("drafts:detail", pk=draft.pk)
 
 
 class TestPublicationConfirmView(DetailView):
@@ -227,8 +345,12 @@ def category_suggestions(request):
 def category_attributes(request):
     category_id = request.GET.get("category_id", "").strip().upper()
     try:
-        definitions = MercadoLibreMetadataService().category_attributes(category_id, access_token(allow_refresh=False))
-        form = ProductDraftForm(attribute_definitions=definitions, initial={"category_id": category_id})
+        connection = active_connection()
+        token = access_token(connection, allow_refresh=False)
+        metadata = MercadoLibreMetadataService()
+        definitions = metadata.category_attributes(category_id, token)
+        listing_types = (metadata.available_listing_types(connection.seller_id, category_id, token).get("available") or [])
+        form = ProductDraftForm(attribute_definitions=definitions, listing_types=listing_types, initial={"category_id": category_id})
         return render(request, "drafts/partials/category_attributes.html", {"form": form})
     except MercadoLibreError as error:
         return render(request, "drafts/partials/category_attributes.html", {"error": str(error)})

@@ -27,6 +27,7 @@ TEMPLATES = [{
     "OPTIONS": {"context_processors": [
         "django.template.context_processors.request", "django.contrib.auth.context_processors.auth",
         "django.contrib.messages.context_processors.messages",
+        "drafts.context_processors.mercado_libre_connection",
     ]},
 }]
 WSGI_APPLICATION = "config.wsgi.application"
@@ -52,7 +53,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-MAX_UPLOAD_SIZE = int(os.environ.get("MAX_UPLOAD_SIZE", 5 * 1024 * 1024))
+MAX_UPLOAD_SIZE = int(os.environ.get("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))
 MERCADO_LIBRE_CLIENT_ID = os.environ.get("MERCADO_LIBRE_CLIENT_ID", "")
 MERCADO_LIBRE_CLIENT_SECRET = os.environ.get("MERCADO_LIBRE_CLIENT_SECRET", "")
 MERCADO_LIBRE_REDIRECT_URI = os.environ.get("MERCADO_LIBRE_REDIRECT_URI", "")
@@ -61,6 +62,13 @@ MERCADO_LIBRE_TIMEOUT = int(os.environ.get("MERCADO_LIBRE_TIMEOUT", "10"))
 MERCADO_LIBRE_SITE_ID = "MLA"
 MERCADO_LIBRE_ENABLE_TEST_WRITES = os.environ.get("MERCADO_LIBRE_ENABLE_TEST_WRITES", "false") == "true"
 MERCADO_LIBRE_TEST_SELLER_ID = os.environ.get("MERCADO_LIBRE_TEST_SELLER_ID", "")
+MERCADO_LIBRE_ENABLE_PRODUCTION_WRITES = os.environ.get("MERCADO_LIBRE_ENABLE_PRODUCTION_WRITES", "false") == "true"
+MERCADO_LIBRE_PRODUCTION_SELLER_ID = os.environ.get("MERCADO_LIBRE_PRODUCTION_SELLER_ID", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "")
+OPENAI_TIMEOUT = int(os.environ.get("OPENAI_TIMEOUT", "30"))
+OPENAI_MAX_ENRICHMENT_IMAGES = int(os.environ.get("OPENAI_MAX_ENRICHMENT_IMAGES", "4"))
+MUSICBRAINZ_USER_AGENT = os.environ.get("MUSICBRAINZ_USER_AGENT", "ML-Publisher/0.1 (local development)")
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 CSRF_COOKIE_HTTPONLY = True

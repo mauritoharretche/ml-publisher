@@ -20,8 +20,17 @@ class ProductDraft(models.Model):
     price = models.DecimalField("precio", max_digits=12, decimal_places=2, validators=[MinValueValidator(0.01)])
     currency = models.CharField(max_length=3, default="ARS", editable=False)
     description = models.TextField("descripción", blank=True)
+    # El título queda como referencia local: Mercado Libre genera el título de
+    # los User Products a partir de los datos de familia y producto.
+    family_name = models.CharField("nombre de familia", max_length=200, blank=True)
+    domain_id = models.CharField("ID de dominio", max_length=100, blank=True)
     category_id = models.CharField("ID de categoría", max_length=30, blank=True)
     additional_attributes = models.JSONField("atributos adicionales", default=dict, blank=True)
+    sale_terms = models.JSONField("términos de venta", default=list, blank=True)
+    listing_type_id = models.CharField("tipo de publicación", max_length=60, blank=True)
+    commercial_details = models.JSONField("datos comerciales locales", default=dict, blank=True)
+    edition_and_authenticity_verified = models.BooleanField("edición y autenticidad verificadas", default=False)
+    commercialization_authorization_confirmed = models.BooleanField("autorización de comercialización confirmada", default=False)
     condition = models.CharField(max_length=20, choices=Condition.choices, default=Condition.NOT_SPECIFIED)
     stock = models.PositiveIntegerField("stock", default=0)
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.DRAFT)
@@ -54,6 +63,28 @@ class ProductImage(models.Model):
 
     def __str__(self):
         return self.original_filename
+
+
+class ProductEnrichment(models.Model):
+    class Status(models.TextChoices):
+        RUNNING = "running", "En curso"
+        COMPLETED = "completed", "Completado"
+        FAILED = "failed", "Fallido"
+
+    draft = models.ForeignKey(ProductDraft, related_name="enrichments", on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.RUNNING)
+    provider = models.CharField(max_length=50)
+    model = models.CharField(max_length=100, blank=True)
+    image_ids = models.JSONField(default=list)
+    suggestions = models.JSONField(default=list)
+    catalog_candidates = models.JSONField(default=list)
+    technical_result = models.JSONField(default=dict)
+    safe_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 
 
 class MercadoLibreConnection(models.Model):
@@ -110,8 +141,10 @@ class PublicationAttempt(models.Model):
     picture_ids = models.JSONField(default=list)
     item_id = models.CharField(max_length=80, blank=True)
     user_product_id = models.CharField(max_length=80, blank=True)
+    family_id = models.CharField(max_length=80, blank=True)
     permalink = models.URLField(blank=True)
     safe_error = models.TextField(blank=True)
+    stage_results = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1,11 +1,11 @@
 import uuid
 from dataclasses import dataclass
-from PIL import Image
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from drafts.models import PublicationAttempt
 from .connections import access_token, active_connection
 from .exceptions import MercadoLibreAuthorizationError, MercadoLibreError, MercadoLibreNetworkError
+from .image_validation import validate_image_file
 from .mercado_libre_client import MercadoLibreHttpClient, MercadoLibreMetadataService
 from .preflight import PublicationPreflightService
 
@@ -140,11 +140,8 @@ class PublicationService:
 
     def _validate_images(self, draft):
         for image in draft.images.all():
-            if image.content_type not in {"image/jpeg", "image/png"}:
-                raise PublicationBlocked(f"{image.original_filename}: Mercado Libre sólo admite JPG/JPEG o PNG; WebP debe convertirse antes del ensayo.")
-            if image.size > 10 * 1024 * 1024:
-                raise PublicationBlocked(f"{image.original_filename}: supera el máximo de 10 MB de Mercado Libre.")
-            with image.image.open("rb") as file_handle:
-                opened = Image.open(file_handle)
-                if opened.format not in {"JPEG", "PNG"}:
-                    raise PublicationBlocked(f"{image.original_filename}: formato de imagen no compatible.")
+            try:
+                with image.image.open("rb") as file_handle:
+                    validate_image_file(file_handle, declared_content_type=image.content_type, declared_size=image.size)
+            except Exception as error:
+                raise PublicationBlocked(f"{image.original_filename}: {error}") from error

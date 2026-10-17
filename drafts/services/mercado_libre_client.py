@@ -154,8 +154,26 @@ class MercadoLibreMetadataService:
     def category_details(self, category_id, access_token):
         return self.http.get(f"/categories/{category_id}", access_token=access_token)
 
+    def category_sale_terms(self, category_id, access_token):
+        return self.http.get(f"/categories/{category_id}/sale_terms", access_token=access_token)
+
+    def technical_specs_input(self, category_id, access_token):
+        return self.http.get(f"/categories/{category_id}/technical_specs/input", access_token=access_token)
+
     def seller_details(self, seller_id, access_token):
         return self.http.get(f"/users/{seller_id}", access_token=access_token)
 
     def available_listing_types(self, seller_id, category_id, access_token):
         return self.http.get(f"/users/{seller_id}/available_listing_types", params={"category_id": category_id}, access_token=access_token)
+
+    def listing_prices(self, *, site_id, price, currency_id, category_id, access_token):
+        return self.http.get(f"/sites/{site_id}/listing_prices", params={"price": str(price), "currency_id": currency_id, "category_id": category_id}, access_token=access_token)
+
+    def seller_shipping_preferences(self, seller_id, access_token):
+        return self.http.get(f"/users/{seller_id}/shipping_preferences", access_token=access_token)
+
+    def category_shipping_preferences(self, category_id, access_token):
+        return self.http.get(f"/categories/{category_id}/shipping_preferences", access_token=access_token)
+
+    def items_for_user_product(self, seller_id, user_product_id, access_token):
+        return self.http.get(f"/users/{seller_id}/items/search", params={"user_product_id": user_product_id}, access_token=access_token)

@@ -20,7 +20,7 @@ class PublicationServiceTests(TestCase):
     def setUp(self):
         self.connection = MercadoLibreConnection.objects.create(seller_id=44, access_token_encrypted=encrypt("token"), refresh_token_encrypted=encrypt("refresh"), token_expires_at=timezone.now() + timedelta(hours=1))
         self.draft = ProductDraft.objects.create(title=f"{PREFIX} producto", price="100", description="Prueba", category_id="MLA1", condition="new", stock=1)
-        stream = BytesIO(); Image.new("RGB", (10, 10)).save(stream, "JPEG")
+        stream = BytesIO(); Image.new("RGB", (500, 500)).save(stream, "JPEG")
         ProductImage.objects.create(draft=self.draft, image=SimpleUploadedFile("test.jpg", stream.getvalue(), content_type="image/jpeg"), position=0, original_filename="test.jpg", content_type="image/jpeg", size=len(stream.getvalue()))
         self.metadata = Mock()
         self.metadata.seller_details.return_value = {"id": 44, "site_id": "MLA", "tags": ["test_user", "user_product_seller"]}
@@ -78,7 +78,7 @@ class PublicationServiceTests(TestCase):
         self.assertIn("title", self.service()._payload(self.draft, "legacy", self.options, pictures))
 
     def test_webp_is_rejected_before_upload(self):
-        stream = BytesIO(); Image.new("RGB", (10, 10)).save(stream, "WEBP")
+        stream = BytesIO(); Image.new("RGB", (500, 500)).save(stream, "WEBP")
         ProductImage.objects.create(draft=self.draft, image=SimpleUploadedFile("test.webp", stream.getvalue(), content_type="image/webp"), position=1, original_filename="test.webp", content_type="image/webp", size=len(stream.getvalue()))
         with self.assertRaisesMessage(PublicationBlocked, "WebP"):
             self.service()._validate_images(self.draft)

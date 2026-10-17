@@ -20,6 +20,11 @@ class PreflightTests(TestCase):
         self.metadata.seller_details.return_value = {"id": 42, "site_id": "MLA", "tags": ["user_product_seller"]}
         self.metadata.category_attributes.return_value = [{"id": "BRAND", "name": "Marca", "tags": {"required": True}, "values": [{"id": "1", "name": "Marca admitida"}]}]
         self.metadata.category_details.return_value = {"name": "Categoría", "settings": {"max_pictures_per_item": 6}}
+        self.metadata.technical_specs_input.return_value = {"groups": []}
+        self.metadata.category_sale_terms.return_value = []
+        self.metadata.listing_prices.return_value = []
+        self.metadata.seller_shipping_preferences.return_value = {"modes": []}
+        self.metadata.category_shipping_preferences.return_value = {"logistics": []}
 
     def service(self):
         return PublicationPreflightService(self.metadata, token_getter=lambda *_args, **_kwargs: "token")
